@@ -9,6 +9,9 @@ const WHATAPI_TOKEN = process.env.WHATAPI_TOKEN || "YOUR_WHATAPI_TOKEN_HERE";
 const WHATAPI_URL = process.env.WHATAPI_URL || "https://api.whatapi.in";
 const WEBHOOK_VERIFY_TOKEN = "elitecare2024";
 
+// Forward webhook data to Google Sheets (keeps your chat history working)
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzIqzQYHZH5ZZBo-bA4nPON7AdNUra3pByD-nLo8rkEXv2hmWjRV0sB6bsOHsKRPnWa2w/exec";
+
 const SYSTEM_PROMPT = `You are the WhatsApp receptionist for Elitecare Medical Center in Abu Dhabi. Talk like a real, friendly human receptionist — not a robot.
 
 RULES:
@@ -187,6 +190,39 @@ function extractMessage(data) {
   return null;
 }
 
+// ============ FORWARD TO GOOGLE SHEETS ============
+function forwardToGoogleSheets(rawBody) {
+  try {
+    const url = new URL(GOOGLE_SCRIPT_URL);
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(rawBody)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        console.log("Forwarded to Google Sheets:", res.statusCode);
+      });
+    });
+
+    req.on("error", (e) => {
+      console.error("Google Sheets forward error:", e.message);
+    });
+
+    req.write(rawBody);
+    req.end();
+  } catch (e) {
+    console.error("Forward error:", e.message);
+  }
+}
+
 // ============ PARSE URL QUERY PARAMS ============
 function parseQuery(url) {
   const params = {};
@@ -250,6 +286,9 @@ const server = http.createServer(async (req, res) => {
       // Respond immediately with 200 so WhatAPI knows we got it
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "received" }));
+
+      // Forward raw data to Google Sheets (keeps your chat history)
+      forwardToGoogleSheets(body);
 
       try {
         const data = JSON.parse(body);
